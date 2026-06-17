@@ -1,0 +1,29 @@
+# Secret keys — NEVER upload these
+.env
+
+# Python auto-generated files — not needed in Git
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Virtual environment — too large, others generate their own
+venv/
+.venv/
+
+# Data files — too large for Git
+data/raw/
+data/processed/
+
+# Trained models — too large for Git (use cloud storage instead)
+data/models/
+
+# Logs
+logs/
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+
+# OS files
+.DS_Store
+Thumbs.db

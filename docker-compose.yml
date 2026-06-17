@@ -1,0 +1,61 @@
+# docker-compose.yml — orchestrates all our containers together
+# version 3.8 is a stable, widely-supported compose file format
+version: '3.8'
+
+services:
+  # ── Service 1: Our Python application ───────────────────────
+  app:
+    # build: . tells Docker to build using the Dockerfile in this folder
+    build: .
+    container_name: supply_chain_app
+
+    # Maps port 8000 on YOUR computer to port 8000 INSIDE the container
+    # Format is "host_port:container_port"
+    # So visiting localhost:8000 on your PC reaches the app inside the container
+    ports:
+      - "8000:8000"
+
+    # env_file loads all variables from .env into this container
+    # so our Python code can read NEWS_API_KEY, POSTGRES_HOST, etc.
+    env_file:
+      - .env
+
+    # volumes here mount your LOCAL code folder into the container
+    # This means: when you edit a file on your PC, it instantly updates
+    # inside the running container — no rebuild needed during development
+    volumes:
+      - .:/app
+
+    # depends_on ensures the database container starts BEFORE the app
+    # Without this, our app might try to connect to a database that isn't ready yet
+    depends_on:
+      - db
+
+  # ── Service 2: PostgreSQL database ──────────────────────────
+  db:
+    # Instead of building, we pull a ready-made official Postgres image
+    # postgres:16 means version 16 of PostgreSQL
+    image: postgres:16
+
+    container_name: supply_chain_db
+
+    # These environment variables are required by the official postgres image
+    # to auto-create a database with a username/password on first startup
+    environment:
+      POSTGRES_DB: supply_chain_db
+      POSTGRES_USER: 
+      POSTGRES_PASSWORD: 
+
+    # Maps Postgres's default port 5432 so you could connect
+    # using a DB tool like pgAdmin from your own PC if needed
+    ports:
+      - "5432:5432"
+
+    # This volume persists database data even if the container is deleted
+    # "postgres_data" is a NAMED volume — Docker manages where it physically lives
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+# Named volumes must be declared here at the bottom
+volumes:
+  postgres_data:
