@@ -1,8 +1,8 @@
-﻿# ── Stage 1: Base image ───────────────────────────────────────
+# ── Stage 1: Base image ───────────────────────────────────────
 # FROM tells Docker: start with this pre-built image from Docker Hub
 # python:3.11-slim is an official Python image — "slim" means minimal size
 # Think of this as: start with a fresh laptop that already has Python 3.11 installed
-FROM python:3.11-slim
+FROM python:3.11-slim-bookworm
 
 # ── Stage 2: Set environment variables ───────────────────────
 # These are like .env but baked into the container itself
@@ -21,7 +21,7 @@ WORKDIR /app
 # RUN executes a shell command during the build process
 # These are OS-level packages PostgreSQL driver needs to compile
 # apt-get is the Linux package manager (like pip but for the OS)
-RUN apt-get update && apt-get install -y \
+RUN apt-get -o Acquire::Check-Valid-Until=false update && apt-get install -y \
     gcc \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
