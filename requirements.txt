@@ -8,30 +8,23 @@ APScheduler==3.10.4       # runs our collector every 30 min automatically
 pandas==2.2.0             # the Excel of Python — tables, filtering, cleaning
 numpy==1.26.3             # fast math on large arrays of numbers
 
-# ── NLP (understanding news text) ────────────────────────────
-transformers==4.37.2      # HuggingFace — state of the art NLP models
-torch==2.2.0              # deep learning engine that powers transformers
-scikit-learn==1.4.0       # classic ML toolkit — preprocessing, evaluation
-
-# ── ML Models ─────────────────────────────────────────────────
-xgboost==2.0.3            # XGBoost — powerful classification model
-tensorflow==2.15.0        # builds and trains our LSTM neural network
-
-# ── API serving ───────────────────────────────────────────────
-fastapi==0.109.0          # builds our REST API (like Rails but Python)
-uvicorn==0.27.0           # runs the FastAPI server (like Puma in Rails)
-pydantic==2.5.3           # validates API request/response data shapes
-
 # ── Database ──────────────────────────────────────────────────
 psycopg2-binary==2.9.9    # connects Python to PostgreSQL
 sqlalchemy==2.0.25        # ORM — interact with DB using Python, not raw SQL
 
-# ── Dashboard ─────────────────────────────────────────────────
-streamlit==1.31.0         # builds interactive web UI with pure Python
-plotly==5.18.0            # beautiful interactive charts
+# ── API serving (so Phase 6 doesn't crash on a missing import) ─
+fastapi==0.109.0          # builds our REST API (like Rails but Python)
+uvicorn==0.27.0           # runs the FastAPI server (like Puma in Rails)
+pydantic==2.5.3           # validates API request/response data shapes
 
 # ── Utilities ─────────────────────────────────────────────────
 python-dotenv==1.0.0      # reads our .env file into Python
 loguru==0.7.2             # much better logging than Python's default
 pytest==7.4.4             # runs automated tests
 httpx==0.26.0             # async HTTP client (used for testing FastAPI)
+
+# ── NOTE: NLP, ML, and dashboard libraries intentionally NOT included yet ──
+# We add these phase-by-phase to keep builds fast:
+#   Phase 3 (NLP):       transformers, torch (CPU-only build)
+#   Phase 5 (ML models):  xgboost, scikit-learn  (LSTM will use torch, not tensorflow)
+#   Phase 7 (Dashboard):  streamlit, plotly
