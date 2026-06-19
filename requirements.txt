@@ -1,7 +1,7 @@
 # ── Data collection ──────────────────────────────────────────
 requests==2.31.0          # makes HTTP calls to APIs (NewsAPI, Weather)
 newsapi-python==0.2.7     # official NewsAPI wrapper — simplifies API calls
-yfinance==0.2.36          # fetches Yahoo Finance data (shipping prices)
+yfinance>=0.2.65          # fetches Yahoo Finance data (shipping prices)
 APScheduler==3.10.4       # runs our collector every 30 min automatically
 
 # ── Data handling ─────────────────────────────────────────────
