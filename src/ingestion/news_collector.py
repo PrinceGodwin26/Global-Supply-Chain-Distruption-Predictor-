@@ -9,64 +9,89 @@ load_dotenv()
 
 class NewsCollector:
     """
-    Fetches news articles related to supply chain disruptions from NewsAPI.
+    Fetches news articles related to supply chain disruption risk from NewsAPI.
 
-    This class wraps NewsAPI's /everything endpoint and provides a clean
-    interface for fetching, validating, and returning structured article data.
+    Rather than relying on a single broad query, this collector searches
+    across multiple disruption categories — geopolitical conflict, natural
+    disasters, labor disputes, trade policy, and logistics failures.
+    This catches events that wouldn't contain the literal phrase
+    "supply chain disruption" but are highly relevant (e.g. a war affecting
+    a major shipping strait, or a port workers' strike).
     """
 
-    BASE_URL = "https://newsapi.org/v2/everything"
+    # Each category has its own targeted query. NewsAPI does literal keyword
+    # matching, so a single vague query misses conceptually-related events
+    # that don't use that exact phrasing.
+    QUERY_CATEGORIES = {
+        "geopolitical": (
+            '(war OR conflict OR blockade OR sanctions OR "military action") '
+            'AND ("supply chain" OR "shipping route" OR "trade route" OR "global trade" OR "export ban")'
+        ),
+        "natural_disaster": (
+            '(earthquake OR hurricane OR typhoon OR flood OR wildfire) '
+            'AND ("supply chain" OR "shipping route" OR "factory shutdown" OR "port closure" OR logistics)'
+        ),
+        "labor_dispute": (
+            '(strike OR "labor dispute" OR "worker protest") '
+            'AND ("supply chain" OR "port workers" OR "factory workers" OR shipping OR logistics)'
+        ),
+        "trade_policy": (
+            '(tariff OR "trade ban" OR "export restriction") '
+            'AND ("supply chain" OR shipping OR import OR export OR manufacturing)'
+        ),
+        "logistics": (
+            '"port congestion" OR "shipping delay" OR "container shortage" '
+            'OR "supply chain disruption"'
+        ),
+    }
 
     def __init__(self):
         self.api_key = os.getenv("NEWS_API_KEY")
+        self.base_url = os.getenv("NEWS_API_BASE_URL")
         if not self.api_key:
-            # Fail loudly and early if the key is missing — this prevents
-            # confusing downstream errors later in the pipeline
             raise ValueError("NEWS_API_KEY not found in environment variables")
+        if not self.base_url:
+            raise ValueError("NEWS_API_BASE_URL not found in environment variables")
 
-    def fetch(self, query: str = "supply chain disruption", page_size: int = 20) -> list[dict]:
+    def _fetch_category(self, category: str, query: str, page_size: int) -> list[dict]:
         """
-        Fetch articles matching the given query.
+        Fetch articles for a single category/query.
 
         Args:
-            query: search keywords sent to NewsAPI
-            page_size: number of articles to retrieve (max 100 per NewsAPI's free tier)
+            category: label identifying which risk category this query covers
+            query: the actual search string sent to NewsAPI
+            page_size: max articles to fetch for this category
 
         Returns:
-            A list of dictionaries, each representing one article with
-            standardized fields: title, source, description, published_at, url
+            A list of standardized article dicts, tagged with their category
         """
         params = {
             "q": query,
             "apiKey": self.api_key,
             "pageSize": page_size,
             "language": "en",
-            "sortBy": "publishedAt",  # newest articles first
+            "sortBy": "publishedAt",
+            # Restrict matching to title + description only, not full body.
+            # This avoids false positives where a keyword appears incidentally
+            # deep in an unrelated article's body text.
+            "searchIn": "title,description",
         }
 
-        logger.info(f"Fetching news articles for query: '{query}'")
-
         try:
-            response = requests.get(self.BASE_URL, params=params, timeout=10)
-            response.raise_for_status()  # raises an exception for HTTP errors (4xx, 5xx)
+            response = requests.get(self.base_url, params=params, timeout=10)
+            response.raise_for_status()
         except requests.exceptions.RequestException as e:
-            # Catching the broad exception here so a network hiccup doesn't
-            # crash the whole pipeline — we log it and return an empty list instead
-            logger.error(f"Failed to fetch news: {e}")
+            logger.error(f"Failed to fetch news for category '{category}': {e}")
             return []
 
         data = response.json()
 
         if data.get("status") != "ok":
-            logger.error(f"NewsAPI returned an error: {data.get('message')}")
+            logger.error(f"NewsAPI error for '{category}': {data.get('message')}")
             return []
 
         articles = data.get("articles", [])
-        logger.info(f"Fetched {len(articles)} articles")
 
-        # Standardize the structure — NewsAPI's raw response has nested
-        # objects (like source.name) which we flatten here for easier
-        # downstream processing (e.g. saving to a database or CSV)
         cleaned_articles = []
         for article in articles:
             cleaned_articles.append({
@@ -75,20 +100,49 @@ class NewsCollector:
                 "description": article.get("description"),
                 "published_at": article.get("publishedAt"),
                 "url": article.get("url"),
+                "category": category,  # tag which risk category this came from
                 "fetched_at": datetime.now(UTC).isoformat(),
             })
 
         return cleaned_articles
 
+    def fetch(self, page_size_per_category: int = 10) -> list[dict]:
+        """
+        Fetch articles across all disruption risk categories.
 
-# This block only runs when you execute this file directly
-# (python3 src/ingestion/news_collector.py) — NOT when it's imported
-# elsewhere in the project. This is the standard Python pattern for
-# adding a quick self-test to any module.
+        Args:
+            page_size_per_category: how many articles to fetch per category
+                (default 10 — with 5 categories, that's up to 50 articles total
+                per run, staying well within NewsAPI's free tier limits)
+
+        Returns:
+            A combined, deduplicated list of articles from all categories
+        """
+        logger.info(f"Fetching news across {len(self.QUERY_CATEGORIES)} risk categories")
+
+        all_articles = []
+        seen_urls = set()  # track URLs to avoid duplicate articles across categories
+
+        for category, query in self.QUERY_CATEGORIES.items():
+            articles = self._fetch_category(category, query, page_size_per_category)
+
+            for article in articles:
+                url = article.get("url")
+                # An article could legitimately match multiple categories
+                # (e.g. a strike caused by a trade dispute) — we keep only
+                # the first occurrence to avoid duplicate rows downstream
+                if url and url not in seen_urls:
+                    seen_urls.add(url)
+                    all_articles.append(article)
+
+        logger.info(f"Fetched {len(all_articles)} unique articles across all categories")
+        return all_articles
+
+
 if __name__ == "__main__":
     collector = NewsCollector()
     articles = collector.fetch()
 
-    print(f"\nFetched {len(articles)} articles:\n")
-    for article in articles[:5]:
-        print(f"- {article['title']} ({article['source']})")
+    print(f"\nFetched {len(articles)} unique articles:\n")
+    for article in articles[:15]:
+        print(f"[{article['category']}] {article['title']} ({article['source']})")

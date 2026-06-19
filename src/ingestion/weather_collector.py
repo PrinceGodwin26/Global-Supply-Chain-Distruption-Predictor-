@@ -16,8 +16,6 @@ class WeatherCollector:
     cargo loading/unloading and vessel movement.
     """
 
-    BASE_URL = "https://api.openweathermap.org/data/2.5/weather"
-
     # Major shipping ports we track — (display name, latitude, longitude)
     # Coordinates are used instead of city names because they're unambiguous
     # (multiple cities worldwide share the same name)
@@ -31,8 +29,11 @@ class WeatherCollector:
 
     def __init__(self):
         self.api_key = os.getenv("OPENWEATHER_API_KEY")
+        self.base_url = os.getenv("OPENWEATHER_BASE_URL")
         if not self.api_key:
             raise ValueError("OPENWEATHER_API_KEY not found in environment variables")
+        if not self.base_url:
+            raise ValueError("OPENWEATHER_BASE_URL not found in environment variables")
 
     def fetch_for_port(self, port: dict) -> dict | None:
         """
@@ -52,7 +53,7 @@ class WeatherCollector:
         }
 
         try:
-            response = requests.get(self.BASE_URL, params=params, timeout=10)
+            response = requests.get(self.base_url, params=params, timeout=10)
             response.raise_for_status()
         except requests.exceptions.RequestException as e:
             logger.error(f"Failed to fetch weather for {port['name']}: {e}")
