@@ -3,6 +3,7 @@ from datetime import datetime, UTC
 import requests
 from dotenv import load_dotenv
 from loguru import logger
+from src.utils.database import get_connection
 
 load_dotenv()
 
@@ -75,6 +76,57 @@ class WeatherCollector:
             "fetched_at": datetime.now(UTC).isoformat(),
         }
 
+
+    def save_to_db(self, weather_data: list[dict]) -> int:
+        """
+        Inserts fetched weather snapshots into the weather_snapshots table.
+
+        Unlike news articles, weather snapshots don't have a natural unique
+        key to deduplicate on — each fetch represents a new point-in-time
+        reading, even if the port and conditions happen to repeat. So we
+        simply insert every row; duplicates here are meaningful data points
+        (e.g. "still raining 30 minutes later"), not errors.
+
+        Args:
+            weather_data: list of weather dicts, as returned by fetch_all()
+
+        Returns:
+            The number of rows inserted
+        """
+        if not weather_data:
+            logger.info("No weather data to save")
+            return 0
+
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        insert_query = """
+            INSERT INTO weather_snapshots
+                (port_name, latitude, longitude, temperature_c, weather_condition,
+                 weather_description, wind_speed_ms, humidity_percent, fetched_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """
+
+        for w in weather_data:
+            cursor.execute(insert_query, (
+                w.get("port_name"),
+                w.get("latitude"),
+                w.get("longitude"),
+                w.get("temperature_c"),
+                w.get("weather_condition"),
+                w.get("weather_description"),
+                w.get("wind_speed_ms"),
+                w.get("humidity_percent"),
+                w.get("fetched_at"),
+            ))
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        logger.info(f"Inserted {len(weather_data)} weather snapshots")
+        return len(weather_data)
+
     def fetch_all(self) -> list[dict]:
         """
         Fetch current weather for every tracked port.
@@ -97,6 +149,7 @@ class WeatherCollector:
 if __name__ == "__main__":
     collector = WeatherCollector()
     weather_data = collector.fetch_all()
+    collector.save_to_db(weather_data)
 
     print(f"\nWeather for {len(weather_data)} ports:\n")
     for w in weather_data:

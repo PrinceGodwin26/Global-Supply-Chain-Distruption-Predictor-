@@ -2,6 +2,7 @@ import os
 from datetime import datetime, UTC
 import yfinance as yf
 from loguru import logger
+from src.utils.database import get_connection
 
 
 class MarketCollector:
@@ -62,6 +63,52 @@ class MarketCollector:
             logger.error(f"Failed to fetch {label} ({symbol}): {e}")
             return None
 
+
+    def save_to_db(self, market_data: list[dict]) -> int:
+        """
+        Inserts fetched market snapshots into the market_snapshots table.
+
+        Like weather data, each market snapshot is a meaningful point-in-time
+        reading — we insert every row without deduplication, since prices
+        legitimately repeat across nearby fetches (e.g. market closed,
+        same closing price reported twice).
+
+        Args:
+            market_data: list of market dicts, as returned by fetch_all()
+
+        Returns:
+            The number of rows inserted
+        """
+        if not market_data:
+            logger.info("No market data to save")
+            return 0
+
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        insert_query = """
+            INSERT INTO market_snapshots
+                (symbol, label, latest_close, previous_close, percent_change, fetched_at)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """
+
+        for m in market_data:
+            cursor.execute(insert_query, (
+                m.get("symbol"),
+                m.get("label"),
+                m.get("latest_close"),
+                m.get("previous_close"),
+                m.get("percent_change"),
+                m.get("fetched_at"),
+            ))
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        logger.info(f"Inserted {len(market_data)} market snapshots")
+        return len(market_data)
+
     def fetch_all(self) -> list[dict]:
         """
         Fetch market data for every tracked ticker.
@@ -84,6 +131,7 @@ class MarketCollector:
 if __name__ == "__main__":
     collector = MarketCollector()
     market_data = collector.fetch_all()
+    collector.save_to_db(market_data)
 
     print(f"\nMarket data for {len(market_data)} tickers:\n")
     for m in market_data:

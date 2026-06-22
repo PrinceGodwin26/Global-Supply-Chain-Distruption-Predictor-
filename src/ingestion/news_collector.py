@@ -3,6 +3,7 @@ from datetime import datetime, UTC
 import requests
 from dotenv import load_dotenv
 from loguru import logger
+from src.utils.database import get_connection
 
 load_dotenv()
 
@@ -106,6 +107,59 @@ class NewsCollector:
 
         return cleaned_articles
 
+
+    def save_to_db(self, articles: list[dict]) -> int:
+        """
+        Inserts fetched articles into the news_articles table.
+
+        Uses ON CONFLICT DO NOTHING on the url column — since url is
+        UNIQUE in our schema, this means re-fetching the same article
+        twice (e.g. across overlapping category queries, or repeated
+        scheduler runs) won't cause a crash or duplicate row. It just
+        silently skips articles already stored.
+
+        Args:
+            articles: list of article dicts, as returned by fetch()
+
+        Returns:
+            The number of new rows actually inserted (duplicates excluded)
+        """
+        if not articles:
+            logger.info("No articles to save")
+            return 0
+
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        insert_query = """
+            INSERT INTO news_articles
+                (title, source, description, category, published_at, url, fetched_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (url) DO NOTHING
+        """
+
+        inserted_count = 0
+        for article in articles:
+            cursor.execute(insert_query, (
+                article.get("title"),
+                article.get("source"),
+                article.get("description"),
+                article.get("category"),
+                article.get("published_at"),
+                article.get("url"),
+                article.get("fetched_at"),
+            ))
+            # cursor.rowcount is 1 if the row was inserted, 0 if skipped
+            # due to the ON CONFLICT clause
+            inserted_count += cursor.rowcount
+
+        conn.commit()  # commits all inserts as one transaction
+        cursor.close()
+        conn.close()
+
+        logger.info(f"Inserted {inserted_count} new articles ({len(articles) - inserted_count} duplicates skipped)")
+        return inserted_count
+
     def fetch(self, page_size_per_category: int = 10) -> list[dict]:
         """
         Fetch articles across all disruption risk categories.
@@ -142,6 +196,7 @@ class NewsCollector:
 if __name__ == "__main__":
     collector = NewsCollector()
     articles = collector.fetch()
+    collector.save_to_db(articles)
 
     print(f"\nFetched {len(articles)} unique articles:\n")
     for article in articles[:15]:
