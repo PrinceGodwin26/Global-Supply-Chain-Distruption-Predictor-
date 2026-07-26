@@ -4,6 +4,8 @@ from loguru import logger
 from src.ingestion.news_collector import NewsCollector
 from src.ingestion.weather_collector import WeatherCollector
 from src.ingestion.market_collector import MarketCollector
+from src.processing.feature_engineer import FeatureEngineer
+from src.processing.nlp_processor import NLPProcessor
 
 
 def run_all_collectors():
@@ -42,6 +44,20 @@ def run_all_collectors():
         market_collector.save_to_db(market_data)
     except Exception as e:
         logger.error(f"Market collection failed: {e}")
+
+    # --- NLP Scoring ---
+    try:
+        processor = NLPProcessor()
+        processor.process_unscored_articles()
+    except Exception as e:
+        logger.error(f"NLP processing failed: {e}")
+
+    # --- Feature Engineering ---
+    try:
+        engineer = FeatureEngineer()
+        engineer.generate_feature_vector()
+    except Exception as e:
+        logger.error(f"Feature engineering failed: {e}")
 
     logger.info("Scheduled data collection run complete")
 
