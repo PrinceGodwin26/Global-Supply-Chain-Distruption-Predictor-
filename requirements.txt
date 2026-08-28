@@ -33,3 +33,7 @@ httpx==0.26.0             # async HTTP client (used for testing FastAPI)
 torch>=2.13.0+cpu        # PyTorch CPU-only build — install via:
                           # pip install torch --index-url https://download.pytorch.org/whl/cpu
 transformers==4.37.2      # HuggingFace transformers — NLP models
+
+# ── ML Models (Phase 5) ───────────────────────────────────────
+scikit-learn==1.4.0       # preprocessing, evaluation metrics
+xgboost==2.0.3            # gradient boosting classifier
