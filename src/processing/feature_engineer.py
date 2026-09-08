@@ -1,7 +1,20 @@
+import math
 from datetime import datetime, UTC, timedelta
 from loguru import logger
 
 from src.utils.database import get_connection
+
+
+def safe_float(value, default: float = 0.0) -> float:
+    """
+    Converts a value to a safe float, replacing None/NaN/Inf with default.
+    Prevents NaN values from corrupting the feature vector and disruption index.
+    """
+    try:
+        result = float(value)
+        return default if (math.isnan(result) or math.isinf(result)) else result
+    except (TypeError, ValueError):
+        return default
 
 
 # Severe weather conditions from OpenWeatherMap that indicate
@@ -136,8 +149,8 @@ class FeatureEngineer:
         )
 
         return {
-            "avg_wind_speed": round(sum(avg_winds) / len(avg_winds), 4) if avg_winds else 0.0,
-            "max_wind_speed": round(max(max_winds), 4) if max_winds else 0.0,
+            "avg_wind_speed": round(safe_float(sum(avg_winds) / len(avg_winds)) if avg_winds else 0.0, 4),
+            "max_wind_speed": round(safe_float(max(max_winds)) if max_winds else 0.0, 4),
             "severe_weather_port_count": severe_count,
         }
 
@@ -200,9 +213,9 @@ class FeatureEngineer:
         market_stress = round((oil_stress + shipping_stress) / 2, 4)
 
         return {
-            "avg_oil_change": round(avg_oil, 4),
-            "avg_shipping_stock_change": round(avg_shipping, 4),
-            "market_stress_score": market_stress,
+            "avg_oil_change": round(safe_float(avg_oil), 4),
+            "avg_shipping_stock_change": round(safe_float(avg_shipping), 4),
+            "market_stress_score": safe_float(market_stress),
         }
 
     def _compute_disruption_risk_index(
@@ -235,6 +248,11 @@ class FeatureEngineer:
 
         market_signal = market_features["market_stress_score"]
 
+        # Ensure all signals are clean floats before arithmetic
+        news_signal = safe_float(news_signal)
+        weather_signal = safe_float(weather_signal)
+        market_signal = safe_float(market_signal)
+
         index = (
             news_signal * NEWS_WEIGHT
             + market_signal * MARKET_WEIGHT
@@ -242,7 +260,8 @@ class FeatureEngineer:
         )
 
         # Clamp to [0, 1] for safety
-        return round(max(0.0, min(1.0, index)), 4)
+        final = safe_float(index)
+        return round(max(0.0, min(1.0, final)), 4)
 
     def generate_feature_vector(self, window_end: datetime | None = None) -> dict | None:
         """
