@@ -106,21 +106,31 @@ class XGBoostRiskClassifier:
             random_state=42,
         )
 
-        self.model.fit(
-            X_train, y_train,
-            eval_set=[(X_test, y_test)],
-            verbose=False,
-        )
+        # Only pass eval_set when we have a proper train/test split
+        # (when training on full dataset, eval_set causes class mismatch errors)
+        fit_params = {"verbose": False}
+        if len(X) >= MIN_SAMPLES:
+            fit_params["eval_set"] = [(X_test, y_test)]
+
+        self.model.fit(X_train, y_train, **fit_params)
 
         self.is_trained = True
         logger.info("XGBoost model trained successfully")
 
         # Evaluate on test set
         y_pred = self.model.predict(X_test)
+
+        # Use only the classes actually present in the data
+        # (with limited data, "High" class may not exist yet)
+        present_classes = sorted(list(set(y_test) | set(y_pred)))
+        class_name_map = {0: "Low", 1: "Medium", 2: "High"}
+        present_names = [class_name_map[c] for c in present_classes]
+
         metrics = {
             "classification_report": classification_report(
                 y_test, y_pred,
-                target_names=["Low", "Medium", "High"],
+                labels=present_classes,
+                target_names=present_names,
                 zero_division=0,
             ),
             "confusion_matrix": confusion_matrix(y_test, y_pred).tolist(),
@@ -148,12 +158,15 @@ class XGBoostRiskClassifier:
 
         class_names = {0: "Low", 1: "Medium", 2: "High"}
 
+        # probabilities shape depends on how many classes exist in training data
+        # With limited data, "High" class may not exist yet — handle gracefully
+        n_classes = probabilities.shape[1]
         return {
-            "predictions": [class_names[p] for p in predictions],
+            "predictions": [class_names.get(p, "Unknown") for p in predictions],
             "probabilities": {
-                "low": probabilities[:, 0].tolist(),
-                "medium": probabilities[:, 1].tolist(),
-                "high": probabilities[:, 2].tolist(),
+                "low": probabilities[:, 0].tolist() if n_classes > 0 else [0.0] * len(predictions),
+                "medium": probabilities[:, 1].tolist() if n_classes > 1 else [0.0] * len(predictions),
+                "high": probabilities[:, 2].tolist() if n_classes > 2 else [0.0] * len(predictions),
             },
         }
 
