@@ -37,3 +37,8 @@ transformers==4.37.2      # HuggingFace transformers — NLP models
 # ── ML Models (Phase 5) ───────────────────────────────────────
 scikit-learn==1.4.0       # preprocessing, evaluation metrics
 xgboost==2.0.3            # gradient boosting classifier
+
+# ── Dashboard (Phase 7) ───────────────────────────────────────
+streamlit==1.31.0         # interactive web dashboard
+plotly==5.18.0            # interactive charts
+pyarrow>=14.0             # pandas performance dependency

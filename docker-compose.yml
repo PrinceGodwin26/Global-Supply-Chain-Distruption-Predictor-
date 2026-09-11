@@ -1,61 +1,82 @@
-# docker-compose.yml — orchestrates all our containers together
-# version 3.8 is a stable, widely-supported compose file format
 version: '3.8'
 
 services:
-  # ── Service 1: Our Python application ───────────────────────
-  app:
-    # build: . tells Docker to build using the Dockerfile in this folder
-    build: .
-    container_name: supply_chain_app
-
-    # Maps port 8000 on YOUR computer to port 8000 INSIDE the container
-    # Format is "host_port:container_port"
-    # So visiting localhost:8000 on your PC reaches the app inside the container
-    ports:
-      - "8000:8000"
-
-    # env_file loads all variables from .env into this container
-    # so our Python code can read NEWS_API_KEY, POSTGRES_HOST, etc.
-    env_file:
-      - .env
-
-    # volumes here mount your LOCAL code folder into the container
-    # This means: when you edit a file on your PC, it instantly updates
-    # inside the running container — no rebuild needed during development
-    volumes:
-      - .:/app
-
-    # depends_on ensures the database container starts BEFORE the app
-    # Without this, our app might try to connect to a database that isn't ready yet
-    depends_on:
-      - db
-
-  # ── Service 2: PostgreSQL database ──────────────────────────
+  # ── PostgreSQL database ───────────────────────────────────────
   db:
-    # Instead of building, we pull a ready-made official Postgres image
-    # postgres:16 means version 16 of PostgreSQL
     image: postgres:16
-
     container_name: supply_chain_db
-
-    # These environment variables are required by the official postgres image
-    # to auto-create a database with a username/password on first startup
     environment:
       POSTGRES_DB: supply_chain_db
-      POSTGRES_USER: 
-      POSTGRES_PASSWORD: 
-
-    # Maps Postgres's default port 5432 so you could connect
-    # using a DB tool like pgAdmin from your own PC if needed
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
       - "5432:5432"
-
-    # This volume persists database data even if the container is deleted
-    # "postgres_data" is a NAMED volume — Docker manages where it physically lives
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      # Mount init script — runs automatically on first container start
+      # Creates all tables so no manual psql setup is needed
+      - ./docker/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      # Health check ensures other services wait until Postgres is
+      # actually ready to accept connections, not just started
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d supply_chain_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-# Named volumes must be declared here at the bottom
+  # ── Data collection scheduler ─────────────────────────────────
+  scheduler:
+    build: .
+    container_name: supply_chain_scheduler
+    # Override the default CMD from Dockerfile to run the scheduler
+    command: python3 -m src.ingestion.scheduler
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+      - ./logs:/app/logs
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    # unless-stopped means: restart automatically if it crashes,
+    # but don't restart if we manually stop it with docker-compose down
+
+  # ── FastAPI REST API ──────────────────────────────────────────
+  api:
+    build: .
+    container_name: supply_chain_api
+    command: uvicorn src.api.main:app --host 0.0.0.0 --port 8000
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ── Streamlit dashboard ───────────────────────────────────────
+  dashboard:
+    build: .
+    container_name: supply_chain_dashboard
+    command: streamlit run src/dashboard/app.py --server.port 8501 --server.address 0.0.0.0
+    env_file:
+      - .env
+    ports:
+      - "8501:8501"
+    volumes:
+      - .:/app
+    depends_on:
+      - api
+    restart: unless-stopped
+
 volumes:
   postgres_data:
