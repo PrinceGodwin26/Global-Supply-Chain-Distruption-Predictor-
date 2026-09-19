@@ -1,7 +1,7 @@
 # ── Data collection ──────────────────────────────────────────
 requests==2.31.0          # makes HTTP calls to APIs (NewsAPI, Weather)
 newsapi-python==0.2.7     # official NewsAPI wrapper — simplifies API calls
-yfinance==0.2.36          # fetches Yahoo Finance data (shipping prices)
+yfinance>=0.2.65          # fetches Yahoo Finance data (shipping prices)
 APScheduler==3.10.4       # runs our collector every 30 min automatically
 
 # ── Data handling ─────────────────────────────────────────────
@@ -28,3 +28,17 @@ httpx==0.26.0             # async HTTP client (used for testing FastAPI)
 #   Phase 3 (NLP):       transformers, torch (CPU-only build)
 #   Phase 5 (ML models):  xgboost, scikit-learn  (LSTM will use torch, not tensorflow)
 #   Phase 7 (Dashboard):  streamlit, plotly
+
+# ── NLP (Phase 3) ─────────────────────────────────────────────
+torch>=2.13.0+cpu        # PyTorch CPU-only build — install via:
+                          # pip install torch --index-url https://download.pytorch.org/whl/cpu
+transformers==4.37.2      # HuggingFace transformers — NLP models
+
+# ── ML Models (Phase 5) ───────────────────────────────────────
+scikit-learn==1.4.0       # preprocessing, evaluation metrics
+xgboost==2.0.3            # gradient boosting classifier
+
+# ── Dashboard (Phase 7) ───────────────────────────────────────
+streamlit==1.31.0         # interactive web dashboard
+plotly==5.18.0            # interactive charts
+pyarrow>=14.0             # pandas performance dependency
